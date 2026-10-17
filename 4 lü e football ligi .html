@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARG FC Lig</title>
+<style>
+body{background:#101a30;color:white;font-family:Arial;padding:14px}
+h1{text-align:center;color:#42e6a0}
+.box{background:#1c2e50;padding:14px;border-radius:12px;margin:14px 0;overflow-x:auto}
+input{padding:9px;border:0;border-radius:6px;margin:4px;width:65px}
+.name{width:140px}
+button{padding:10px;background:#42e6a0;border:0;border-radius:7px;margin:5px;cursor:pointer}
+table{width:100%;border-collapse:collapse;min-width:460px}
+td,th{padding:9px 5px;text-align:center;border-bottom:1px solid #40516f}
+th{color:#42e6a0}
+.small{font-size:13px;color:#c5d2e5}
+</style>
+</head>
+<body>
+<h1>🏆 ARG FC LİGİ</h1>
+<p id="status" class="small">Hazırlanıyor...</p>
+
+<div class="box">
+<h3>🛡️ Takımlar</h3>
+<div id="teams"></div>
+</div>
+
+<div class="box">
+<h3>📊 Puan Tablosu</h3>
+<div id="table"></div>
+</div>
+
+<div class="box">
+<h3>⚽ Maç Sonuçları</h3>
+<div id="matches"></div>
+</div>
+
+<div class="box">
+<h3>👑 Gol Krallığı</h3>
+<p class="small">Her oyuncunun toplam golünü gir. En çok gol atan birinci olur.</p>
+<div id="scorers"></div>
+<button onclick="addScorer()">+ Oyuncu ekle</button>
+</div>
+
+<div class="box">
+<button onclick="backup()">Yedek indir</button>
+<button onclick="resetScores()">Maç skorlarını sil</button>
+</div>
+
+<script>
+const KEY="arg_fc_lig_v3";
+const defaults=["ARG FC","GeleniYenerim","Galaxy14","İstanbulSS"];
+let data={names:defaults.slice(),scores:[],scorers:[]};
+
+function makeGames(){
+ data.scores=[];
+ for(let i=0;i<4;i++)for(let j=i+1;j<4;j++){
+  data.scores.push({a:i,b:j,h:"",v:""});
+  data.scores.push({a:j,b:i,h:"",v:""});
+ }
+}
+function load(){
+ try{
+  let d=JSON.parse(localStorage.getItem(KEY));
+  if(d&&d.names?.length===4&&d.scores?.length===12){
+   data=d;
+   if(!Array.isArray(data.scorers))data.scorers=[];
+  }else makeGames();
+ }catch(e){makeGames();}
+}
+function save(){
+ try{
+  localStorage.setItem(KEY,JSON.stringify(data));
+  document.getElementById("status").textContent="✅ Otomatik kaydedildi";
+ }catch(e){
+  document.getElementById("status").textContent="⚠️ Kayıt başarısız! Yedek indir.";
+ }
+}
+function esc(s){
+ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function renderTeams(){
+ document.getElementById("teams").innerHTML=data.names.map((n,i)=>
+ `<div><input class="name" value="${esc(n)}" onchange="rename(${i},this.value)"></div>`).join("");
+}
+function rename(i,v){
+ data.names[i]=v.trim()||defaults[i];
+ save();renderTeams();renderMatches();update();
+}
+function renderMatches(){
+ document.getElementById("matches").innerHTML=data.scores.map((g,i)=>
+ `<p><b>${esc(data.names[g.a])} - ${esc(data.names[g.b])}</b><br>
+ <input type="number" min="0" step="1" placeholder="Gol" value="${esc(g.h)}" oninput="score(${i},'h',this.value)"> -
+ <input type="number" min="0" step="1" placeholder="Gol" value="${esc(g.v)}" oninput="score(${i},'v',this.value)"></p>`).join("");
+}
+function score(i,k,v){
+ if(v!==""&&(!Number.isInteger(Number(v))||Number(v)<0))return;
+ data.scores[i][k]=v;save();update();
+}
+function update(){
+ let t=data.names.map((name,id)=>({name,id,O:0,G:0,B:0,M:0,AG:0,YG:0,P:0}));
+ data.scores.forEach(g=>{
+  if(g.h===""||g.v==="")return;
+  let h=+g.h,v=+g.v,a=t[g.a],b=t[g.b];
+  a.O++;b.O++;a.AG+=h;a.YG+=v;b.AG+=v;b.YG+=h;
+  if(h>v){a.G++;a.P+=3;b.M++}
+  else if(h<v){b.G++;b.P+=3;a.M++}
+  else{a.B++;b.B++;a.P++;b.P++}
+ });
+ t.forEach(x=>x.AV=x.AG-x.YG);
+ t.sort((a,b)=>b.P-a.P||b.AV-a.AV||b.AG-a.AG);
+ document.getElementById("table").innerHTML=
+ `<table><tr><th>#</th><th>Takım</th><th>O</th><th>G</th><th>B</th><th>M</th><th>AG</th><th>YG</th><th>AV</th><th>P</th></tr>`+
+ t.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.name)}</td><td>${x.O}</td><td>${x.G}</td><td>${x.B}</td><td>${x.M}</td><td>${x.AG}</td><td>${x.YG}</td><td>${x.AV}</td><td>${x.P}</td></tr>`).join("")+`</table>`;
+}
+function renderScorers(){
+ let list=data.scorers.map((s,i)=>({...s,i})).sort((a,b)=>Number(b.goals)-Number(a.goals));
+ document.getElementById("scorers").innerHTML=list.map((s,rank)=>
+ `<p>${rank===0&&s.name?"🥇":rank===1?"🥈":rank===2?"🥉":"⚽"}
+ <input class="name" aria-label="Oyuncu adı" placeholder="Oyuncu adı" value="${esc(s.name)}" onchange="editScorer(${s.i},'name',this.value)">
+ <input type="number" min="0" step="1" aria-label="Gol sayısı" value="${esc(s.goals)}" onchange="editScorer(${s.i},'goals',this.value)"> gol
+ <button onclick="removeScorer(${s.i})">Sil</button></p>`).join("")||"Henüz oyuncu eklenmedi.";
+}
+function addScorer(){
+ data.scorers.push({name:"",goals:0});
+ save();renderScorers();
+}
+function editScorer(i,k,v){
+ if(k==="goals"&&(v===""||!Number.isInteger(Number(v))||Number(v)<0))v=0;
+ data.scorers[i][k]=k==="goals"?Number(v):v;
+ save();renderScorers();
+}
+function removeScorer(i){
+ data.scorers.splice(i,1);save();renderScorers();
+}
+function resetScores(){
+ if(!confirm("Tüm maç skorları silinsin mi?"))return;
+ data.scores.forEach(g=>{g.h="";g.v=""});
+ save();renderMatches();update();
+}
+function backup(){
+ const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement("a");a.href=url;a.download="ARG-FC-yedek.json";a.click();
+ URL.revokeObjectURL(url);
+}
+load();renderTeams();renderMatches();renderScorers();update();save();
+</script>
+</body>
+</html>
